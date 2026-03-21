@@ -1,0 +1,5 @@
+<launch>
+	<!-- <node pkg="map_server" type="map_saver" name="map_saver1" args="-f /home/wheeltec/wheeltec_robot/src/turn_on_wheeltec_robot/map/WHEELTEC" output="screen">	 -->
+	<node pkg="map_server" type="map_saver" name="map_saver1" args="-f /home/wheeltec/map/MAP240430" output="screen">	
+	</node>
+</launch>
