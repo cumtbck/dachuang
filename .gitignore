@@ -28,3 +28,5 @@
 *.docx
 
 **/lib/
+
+__pycache__/
