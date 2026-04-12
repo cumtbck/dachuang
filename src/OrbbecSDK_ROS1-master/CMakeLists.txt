@@ -1,6 +1,28 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
+# 1. 显式定义系统 OpenCV 3.2 的头文件路径（排在最前面，防止搜到 /usr/local）
+include_directories(BEFORE SYSTEM "/usr/include" "/usr/include/opencv")
+
+# 2. 强制指定 3.2 的库文件
+set(OpenCV_LIBRARIES
+    "/usr/lib/aarch64-linux-gnu/libopencv_core.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_imgcodecs.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_videoio.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_objdetect.so.3.2"
+)
+
+# 3. 屏蔽原本的 find_package(OpenCV)
+# 注释掉下面这行：
+# find_package(OpenCV REQUIRED)
+
+# 4. 告诉下游节点我们已经手动“找到”了 OpenCV
+set(OpenCV_FOUND TRUE)
+set(OpenCV_INCLUDE_DIRS "/usr/include;/usr/include/opencv")
+message(STATUS "HACKED: System OpenCV 3.2 links forced to bypass clock/version issues")
+
 # Compiler settings
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD 11)
@@ -89,41 +111,6 @@ set(SERVICE_FILES
   SetString.srv
 )
 
-# ==============================================================================
-# 针对 Jetson Bionic (2026) 的硬核兼容方案：强制手动链接系统现存的 3.2 库
-# ==============================================================================
-set(OpenCV_FOUND TRUE)
-set(OpenCV_VERSION "3.2.0")
-
-# 强制指定头文件路径
-set(OpenCV_INCLUDE_DIRS "/usr/include" "/usr/include/opencv")
-
-# 直接写死动态库的绝对路径（避开 /usr/local 下的 3.4 和 apt 可能带来的 4.x）
-set(OpenCV_LIBRARIES
-    "/usr/lib/aarch64-linux-gnu/libopencv_core.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_imgcodecs.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_videoio.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_objdetect.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_calib3d.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_features2d.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_flann.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_ml.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_photo.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_shape.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_stitching.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_superres.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_video.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_videostab.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_viz.so.3.2"
-)
-
-# 注释掉原本那行 find_package
-# find_package(OpenCV REQUIRED)
-
-message(STATUS "Build Hack: Using explicit OpenCV 3.2.0 paths to bypass broken Apt/CMake configs")
-# ==============================================================================
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 find_package(PkgConfig REQUIRED)
