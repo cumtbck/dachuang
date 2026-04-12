@@ -11,7 +11,6 @@
 *.jpg
 *.png
 
-*.so
 
 *.sh
 
@@ -28,6 +27,6 @@
 *.doc
 *.docx
 
-**/lib/
+
 
 __pycache__/
