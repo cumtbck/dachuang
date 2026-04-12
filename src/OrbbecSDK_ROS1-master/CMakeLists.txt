@@ -1,27 +1,28 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
-# 1. 显式定义系统 OpenCV 3.2 的头文件路径（排在最前面，防止搜到 /usr/local）
+# 强制将系统标准的 OpenCV 3.2 路径排在搜索首位
 include_directories(BEFORE SYSTEM "/usr/include" "/usr/include/opencv")
 
-# 2. 强制指定 3.2 的库文件
+set(OpenCV_FOUND TRUE)
+set(OpenCV_VERSION "3.2.0")
+set(OpenCV_INCLUDE_DIRS "/usr/include" "/usr/include/opencv")
+
+# 直接指定 3.2.0 的动态库绝对路径，杜绝链接器去搜 /usr/local
 set(OpenCV_LIBRARIES
     "/usr/lib/aarch64-linux-gnu/libopencv_core.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_imgcodecs.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_videoio.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_objdetect.so.3.2"
 )
 
-# 3. 屏蔽原本的 find_package(OpenCV)
-# 注释掉下面这行：
-# find_package(OpenCV REQUIRED)
+# 打印信息用于调试
+message(STATUS "FORCE HACK: Linking to OpenCV 3.2.0 absolute paths.")
 
-# 4. 告诉下游节点我们已经手动“找到”了 OpenCV
-set(OpenCV_FOUND TRUE)
-set(OpenCV_INCLUDE_DIRS "/usr/include;/usr/include/opencv")
-message(STATUS "HACKED: System OpenCV 3.2 links forced to bypass clock/version issues")
+# 注释掉原本的 find_package(OpenCV REQUIRED)
+# find_package(OpenCV REQUIRED)
 
 # Compiler settings
 set(CMAKE_CXX_STANDARD 11)
