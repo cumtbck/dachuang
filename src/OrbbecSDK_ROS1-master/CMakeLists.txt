@@ -233,7 +233,9 @@ add_dependencies(${PROJECT_NAME}_nodelet ${PROJECT_NAME}_generate_messages_cpp)
 # Macro for adding executables
 macro(add_orbbec_executable TARGET SOURCES)
   add_executable(${TARGET} ${SOURCES})
-  target_link_libraries(${TARGET} ${COMMON_LINK_LIBRARIES} ${PROJECT_NAME})
+  # Link dependent library first so its dependencies (e.g. OpenCV) that follow
+  # are not dropped by linkers using --as-needed / --no-copy-dt-needed-entries.
+  target_link_libraries(${TARGET} ${PROJECT_NAME} ${COMMON_LINK_LIBRARIES})
   target_include_directories(${TARGET} PUBLIC ${COMMON_INCLUDE_DIRS})
 endmacro()
 
