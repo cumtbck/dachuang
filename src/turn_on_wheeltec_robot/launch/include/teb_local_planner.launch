@@ -2,6 +2,7 @@
 
   <!-- Arguments参数 -->
   <arg name="car_mode"  default="" />
+  <arg name="cmd_vel_output" default="cmd_vel" />
 
   <!-- 导航路径规划公共参数 -->
   <rosparam file="$(find turn_on_wheeltec_robot)/params_nav_common/move_base_params.yaml"          command="load" ns="move_base"/>
@@ -23,8 +24,8 @@
     <rosparam file="$(find turn_on_wheeltec_robot)/params_costmap_car/param_$(arg car_mode)/teb_local_planner_params.yaml"  command="load"/>
     <rosparam file="$(find turn_on_wheeltec_robot)/params_costmap_car/param_$(arg car_mode)/costmap_car_params.yaml" command="load" ns="global_costmap" />
     <rosparam file="$(find turn_on_wheeltec_robot)/params_costmap_car/param_$(arg car_mode)/costmap_car_params.yaml" command="load" ns="local_costmap" />
+    <remap from="cmd_vel" to="$(arg cmd_vel_output)" />
   </node>
 
 </launch>
-
 

@@ -24,13 +24,10 @@ global_costmap:
   #代价地图分辨率（米/单元格）
   resolution: 0.05
   
-  #为代价地图设置地图层，这里设置了三层，分别作为静态层、障碍层和膨胀层
+  #为代价地图设置地图层，这里设置两层，分别作为静态层和膨胀层
   plugins:
     #定义地图层的名称，设置地图层的类型
     - {name: static_layer,      type: "costmap_2d::StaticLayer"}
-    #定义地图层的名称，设置地图层的类型。
-    #障碍层可以使用VoxelLayer代替ObstacleLayer
-    - {name: obstacle_layer,    type: "costmap_2d::VoxelLayer"}
     #定义地图层的名称，设置地图层的类型
     - {name: inflation_layer,   type: "costmap_2d::InflationLayer"}
   #各地图层的参数，会以地图层名称作为命名空间

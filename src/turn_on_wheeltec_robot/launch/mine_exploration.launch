@@ -1,0 +1,42 @@
+<launch>
+  <arg name="car_mode" default="mini_mec" />
+  <arg name="map_file" default="$(env HOME)/map/MAP240430.yaml" />
+  <arg name="enable_radar" default="true" doc="Whether to start wheeltec_radar and publish /radarpointcloud." />
+  <arg name="zynq_ip" default="192.168.1.10" />
+  <arg name="zynq_port" default="5000" />
+  <arg name="listen_port" default="5001" />
+
+  <!-- Base & navigation stack -->
+  <include file="$(find turn_on_wheeltec_robot)/launch/turn_on_wheeltec_robot.launch">
+    <arg name="navigation" value="true" />
+    <arg name="car_mode" value="$(arg car_mode)" />
+    <arg name="cmd_vel_output" value="/cmd_vel_nav" />
+  </include>
+
+  <!-- Sensors -->
+  <include file="$(find oradar_lidar)/launch/ms200_scan.launch" />
+  <group if="$(arg enable_radar)">
+    <include file="$(find wheeltec_radar)/launch/wheeltec_radar.launch" />
+  </group>
+  <include file="$(find orbbec_camera)/launch/dabai_dcw2.launch">
+    <arg name="depth_registration" value="true" />
+    <arg name="enable_point_cloud" value="false" />
+    <arg name="enable_colored_point_cloud" value="false" />
+    <arg name="enable_d2c_viewer" value="false" />
+    <arg name="color_width" value="640" />
+    <arg name="color_height" value="480" />
+    <arg name="depth_width" value="640" />
+    <arg name="depth_height" value="400" />
+  </include>
+
+  <!-- Map server and localization -->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
+  <include file="$(find turn_on_wheeltec_robot)/launch/include/amcl.launch" />
+
+  <!-- Zynq semantic bridge and traffic manager -->
+  <include file="$(find semantic_vision_bridge)/launch/semantic_bridge.launch">
+    <arg name="zynq_ip" value="$(arg zynq_ip)" />
+    <arg name="zynq_port" value="$(arg zynq_port)" />
+    <arg name="listen_port" value="$(arg listen_port)" />
+  </include>
+</launch>

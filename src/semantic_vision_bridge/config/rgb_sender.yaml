@@ -1,0 +1,6 @@
+image_topic: /camera/color/image_raw
+target_ip: 192.168.1.10
+target_port: 5000
+fps: 10
+jpeg_quality: 80
+max_payload: 60000

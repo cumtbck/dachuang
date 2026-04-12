@@ -17,6 +17,7 @@
   <!--是否开启导航功能 在导航相关文件中开启 此处默认不开启-->
   <arg name="navigation"  default="false"/>
   <arg name="pure3d_nav"  default="false"/>
+  <arg name="cmd_vel_output" default="cmd_vel"/>
   <!--是否重复开启底层节点 在语音运行自主建图时开启 此处默认不开启-->
   <arg name="repeat"  default="false"/>
   <arg name="if_voice" default="false"/>
@@ -48,6 +49,7 @@
   <!-- 开启dwa_local_planner导航算法-->
   <!-- <include file="$(find turn_on_wheeltec_robot)/launch/include/dwa_local_planner.launch" if="$(arg navigation)"> -->
     <arg name="car_mode" value="$(arg car_mode)"/>
+    <arg name="cmd_vel_output" value="$(arg cmd_vel_output)"/>
   </include>
 
   <!--当开启纯视觉导航功能时-->
@@ -69,5 +71,4 @@
     <arg name="is_cartographer" value="$(arg is_cartographer)"/>
   </include>
  </launch>
-
 

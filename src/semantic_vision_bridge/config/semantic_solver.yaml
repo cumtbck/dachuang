@@ -1,0 +1,12 @@
+depth_topic: /camera/depth_to_color/image_raw
+camera_info_topic: /camera/color/camera_info
+listen_port: 5001
+target_frame: base_link
+buffer_size: 10
+depth_scale: 1000.0
+obstacle_radius: 0.2
+traffic_stop_distance: 2.0
+helmet_stop_distance: 1.0
+helmet_classes: [helmet]
+red_light_classes: [red_light, red, redlight]
+green_light_classes: [green_light, green, greenlight]

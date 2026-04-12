@@ -2,7 +2,7 @@
 <launch>
  <!-- 开启机器人底层相关节点 同时开启导航功能-->
  <include file="$(find turn_on_wheeltec_robot)/launch/turn_on_wheeltec_robot.launch">
-    <arg name="navigation"  default="true"/>
+    <arg name="navigation" value="true"/>
  </include>
  <!-- turn on lidar开启雷达  -->
  <!-- <include file="$(find turn_on_wheeltec_robot)/launch/wheeltec_lidar.launch" /> -->
@@ -35,7 +35,6 @@
  </node>
  
 </launch>
-
 
 
 

@@ -2,7 +2,8 @@
 
 /build
 
-
+/src/docs
+/src/refs
 *.zip
 
 *.wav

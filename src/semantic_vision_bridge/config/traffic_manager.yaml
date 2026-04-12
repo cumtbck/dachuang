@@ -1,0 +1,3 @@
+cmd_vel_in: /cmd_vel_nav
+cmd_vel_out: /cmd_vel
+publish_rate: 10.0
