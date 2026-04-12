@@ -89,7 +89,19 @@ set(SERVICE_FILES
   SetString.srv
 )
 
-find_package(OpenCV REQUIRED)
+# Prefer ROS distro OpenCV to avoid mixing versions with cv_bridge on Melodic.
+option(PREFER_ROS_OPENCV "Prefer ROS distro OpenCV (e.g. /usr/share/OpenCV) over /usr/local builds" ON)
+if(PREFER_ROS_OPENCV AND NOT OpenCV_DIR)
+  if(EXISTS "/usr/share/OpenCV/OpenCVConfig.cmake")
+    set(OpenCV_DIR "/usr/share/OpenCV" CACHE PATH "OpenCVConfig.cmake directory" FORCE)
+  elseif(EXISTS "/usr/lib/aarch64-linux-gnu/cmake/opencv3/OpenCVConfig.cmake")
+    set(OpenCV_DIR "/usr/lib/aarch64-linux-gnu/cmake/opencv3" CACHE PATH "OpenCVConfig.cmake directory" FORCE)
+  endif()
+endif()
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui)
+if(OpenCV_LIBRARY_DIRS)
+  link_directories(${OpenCV_LIBRARY_DIRS})
+endif()
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -140,7 +152,7 @@ set(COMMON_INCLUDE_DIRS
   $<INSTALL_INTERFACE:include>
   ${catkin_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
-  ${OpenCV_INCLUDED_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
   ${ORBBEC_INCLUDE_DIR}
 )
 if (USE_NV_HW_DECODER)
