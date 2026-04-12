@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
+# 强制指定系统自带 OpenCV 3.2 的配置路径
+# 注意：在 Ubuntu 18.04 中，3.2 的配置通常在以下路径之一
+set(OpenCV_DIR "/usr/lib/aarch64-linux-gnu/cmake/opencv")
+
+# 如果上面的路径不对，可以试这个（OrbbecSDK 特有的搜索逻辑可能需要这个）
+# set(OpenCV_DIR "/usr/share/OpenCV")
+
+find_package(OpenCV 3.2.0 EXACT REQUIRED)
+
 # Compiler settings
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD 11)
