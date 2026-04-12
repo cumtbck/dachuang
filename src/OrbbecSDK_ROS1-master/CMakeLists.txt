@@ -1,15 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
-# 强制指定系统自带 OpenCV 3.2 的配置路径
-# 注意：在 Ubuntu 18.04 中，3.2 的配置通常在以下路径之一
-set(OpenCV_DIR "/usr/lib/aarch64-linux-gnu/cmake/opencv")
-
-# 如果上面的路径不对，可以试这个（OrbbecSDK 特有的搜索逻辑可能需要这个）
-# set(OpenCV_DIR "/usr/share/OpenCV")
-
-find_package(OpenCV 3.2.0 EXACT REQUIRED)
-
 # Compiler settings
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD 11)
@@ -98,27 +89,41 @@ set(SERVICE_FILES
   SetString.srv
 )
 
-# Prefer ROS distro OpenCV to avoid mixing versions with cv_bridge on Melodic.
-option(PREFER_ROS_OPENCV "Prefer ROS distro OpenCV (e.g. /usr/share/OpenCV) over /usr/local builds" ON)
-if(PREFER_ROS_OPENCV)
-  set(_ros_opencv_dir "")
-  if(EXISTS "/usr/share/OpenCV/OpenCVConfig.cmake")
-    set(_ros_opencv_dir "/usr/share/OpenCV")
-  elseif(EXISTS "/usr/lib/aarch64-linux-gnu/cmake/opencv3/OpenCVConfig.cmake")
-    set(_ros_opencv_dir "/usr/lib/aarch64-linux-gnu/cmake/opencv3")
-  endif()
+# ==============================================================================
+# 针对 Jetson Bionic (2026) 的硬核兼容方案：强制手动链接系统现存的 3.2 库
+# ==============================================================================
+set(OpenCV_FOUND TRUE)
+set(OpenCV_VERSION "3.2.0")
 
-  if(_ros_opencv_dir)
-    if((NOT OpenCV_DIR) OR (OpenCV_DIR MATCHES "^/usr/local") OR (NOT EXISTS "${OpenCV_DIR}/OpenCVConfig.cmake"))
-      set(OpenCV_DIR "${_ros_opencv_dir}" CACHE PATH "OpenCVConfig.cmake directory" FORCE)
-    endif()
-  endif()
-endif()
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui)
-if(OpenCV_LIBRARY_DIRS)
-  link_directories(${OpenCV_LIBRARY_DIRS})
-endif()
-message(STATUS "Using OpenCV ${OpenCV_VERSION} from ${OpenCV_DIR}")
+# 强制指定头文件路径
+set(OpenCV_INCLUDE_DIRS "/usr/include" "/usr/include/opencv")
+
+# 直接写死动态库的绝对路径（避开 /usr/local 下的 3.4 和 apt 可能带来的 4.x）
+set(OpenCV_LIBRARIES
+    "/usr/lib/aarch64-linux-gnu/libopencv_core.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_imgcodecs.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_videoio.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_objdetect.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_calib3d.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_features2d.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_flann.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_ml.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_photo.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_shape.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_stitching.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_superres.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_video.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_videostab.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_viz.so.3.2"
+)
+
+# 注释掉原本那行 find_package
+# find_package(OpenCV REQUIRED)
+
+message(STATUS "Build Hack: Using explicit OpenCV 3.2.0 paths to bypass broken Apt/CMake configs")
+# ==============================================================================
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -227,7 +232,7 @@ endif ()
 # Link libraries
 set(COMMON_LINK_LIBRARIES
   ${catkin_LIBRARIES}
-  ${OpenCV_LIBS}
+  ${OpenCV_LIBRARIES}
   ${GLOG_LIBRARIES}
   ${ORBBEC_SDK_LIBRARY}
   Threads::Threads
