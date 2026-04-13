@@ -1,14 +1,17 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
-# 强制将系统标准的 OpenCV 3.2 路径排在搜索首位
-include_directories(BEFORE SYSTEM "/usr/include" "/usr/include/opencv")
-
+# ==============================================================================
+# 绕过系统损坏的配置，强制链接物理路径下的 OpenCV 3.2.0
+# ==============================================================================
 set(OpenCV_FOUND TRUE)
 set(OpenCV_VERSION "3.2.0")
+
+# 强制指定头文件位置（防止去 /usr/local/include 乱找）
+include_directories(BEFORE SYSTEM "/usr/include" "/usr/include/opencv")
 set(OpenCV_INCLUDE_DIRS "/usr/include" "/usr/include/opencv")
 
-# 直接指定 3.2.0 的动态库绝对路径，杜绝链接器去搜 /usr/local
+# 直接指定物理 .so 文件路径，彻底解决 ABI 冲突
 set(OpenCV_LIBRARIES
     "/usr/lib/aarch64-linux-gnu/libopencv_core.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.3.2"
@@ -16,12 +19,13 @@ set(OpenCV_LIBRARIES
     "/usr/lib/aarch64-linux-gnu/libopencv_videoio.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
     "/usr/lib/aarch64-linux-gnu/libopencv_objdetect.so.3.2"
+    "/usr/lib/aarch64-linux-gnu/libopencv_calib3d.so.3.2"
 )
 
-# 打印信息用于调试
-message(STATUS "FORCE HACK: Linking to OpenCV 3.2.0 absolute paths.")
+# 告诉 CMake 已经手动解决 OpenCV 依赖
+message(STATUS "MANUAL HACK: Using hardcoded OpenCV 3.2.0 paths for Jetson.")
 
-# 注释掉原本的 find_package(OpenCV REQUIRED)
+# 重要：确保注释掉原有的 find_package(OpenCV REQUIRED)
 # find_package(OpenCV REQUIRED)
 
 # Compiler settings
