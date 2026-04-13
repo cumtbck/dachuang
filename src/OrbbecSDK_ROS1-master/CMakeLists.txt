@@ -2,21 +2,13 @@ cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
 # ==============================================================================
-# 强制隔离损坏的系统路径，完全使用本地 3.4.5 版本
+# 全面拥抱 OpenCV 4.1 (与底层 cv_bridge 完美对齐)
 # ==============================================================================
+set(OpenCV_DIR "/usr/lib/aarch64-linux-gnu/cmake/opencv4")
+find_package(OpenCV REQUIRED)
 
-# 1. 指定本地 OpenCV 3.4.5 的配置路径
-set(OpenCV_DIR "/usr/local/share/OpenCV")
-
-# 2. 强制寻找该版本，禁止搜寻默认路径
-find_package(OpenCV 3.4.5 EXACT REQUIRED NO_DEFAULT_PATH)
-
-# 3. 强制头文件包含顺序（关键：将本地路径置于系统路径之前）
-include_directories(BEFORE SYSTEM ${OpenCV_INCLUDE_DIRS})
-
-# 4. 打印调试信息，确保选对路径
 message(STATUS "---------------------------------------------------")
-message(STATUS "  CHECKING OPENCV FOR ORBBEC:")
+message(STATUS "  UNIFIED OPENCV ENVIRONMENT:")
 message(STATUS "  Version: ${OpenCV_VERSION}")
 message(STATUS "  Include Dirs: ${OpenCV_INCLUDE_DIRS}")
 message(STATUS "  Libraries: ${OpenCV_LIBRARIES}")
@@ -99,14 +91,6 @@ find_package(catkin REQUIRED
   pluginlib
   nodelet
 )
-
-# ==============================================================================
-# 终极过滤黑魔法：剔除 cv_bridge 偷偷带入的 OpenCV 3.2 依赖，防止链接冲突
-# ==============================================================================
-message(STATUS "Removing system OpenCV 3.2 from catkin to prevent ABI conflicts...")
-list(FILTER catkin_LIBRARIES EXCLUDE REGEX "libopencv_")
-list(FILTER catkin_INCLUDE_DIRS EXCLUDE REGEX "/usr/include/opencv")
-# ==============================================================================
 set(SERVICE_FILES
   GetBool.srv
   SetBool.srv
