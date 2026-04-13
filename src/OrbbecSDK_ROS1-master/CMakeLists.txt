@@ -99,6 +99,14 @@ find_package(catkin REQUIRED
   pluginlib
   nodelet
 )
+
+# ==============================================================================
+# 终极过滤黑魔法：剔除 cv_bridge 偷偷带入的 OpenCV 3.2 依赖，防止链接冲突
+# ==============================================================================
+message(STATUS "Removing system OpenCV 3.2 from catkin to prevent ABI conflicts...")
+list(FILTER catkin_LIBRARIES EXCLUDE REGEX "libopencv_")
+list(FILTER catkin_INCLUDE_DIRS EXCLUDE REGEX "/usr/include/opencv")
+# ==============================================================================
 set(SERVICE_FILES
   GetBool.srv
   SetBool.srv
