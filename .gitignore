@@ -4,6 +4,7 @@
 
 /src/docs
 /src/refs
+/idle
 *.zip
 
 *.wav

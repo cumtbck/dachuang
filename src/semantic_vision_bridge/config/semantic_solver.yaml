@@ -3,6 +3,15 @@ camera_info_topic: /camera/color/camera_info
 listen_port: 5001
 target_frame: base_link
 buffer_size: 10
+enable_result_view: false
+result_view_topic: /camera/color/image_raw
+result_view_window: mix_detections
+result_view_fps: 10.0
+result_view_buffer_size: 10
+result_view_match_tolerance_ms: 80.0
+debug_latency: false
+latency_mode: both
+latency_log_interval: 1.0
 depth_scale: 1000.0
 obstacle_radius: 0.2
 traffic_stop_distance: 2.0

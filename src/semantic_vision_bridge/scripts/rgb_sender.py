@@ -2,6 +2,7 @@
 import math
 import socket
 import struct
+import time
 
 import cv2
 import rospy
@@ -9,14 +10,21 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 
 
-HEADER_FORMAT = "!2sQHH"
+HEADER_FORMAT = "!2sQQHH"
 HEADER_MAGIC = b"MC"
+
+
+def _time_ns():
+    try:
+        return time.time_ns()
+    except AttributeError:
+        return int(time.time() * 1.0e9)
 
 
 class UdpImageSender(object):
     def __init__(self):
         self.bridge = CvBridge()
-        self.target_ip = rospy.get_param("~target_ip", "192.168.1.10")
+        self.target_ip = rospy.get_param("~target_ip", "10.42.0.64")
         self.target_port = int(rospy.get_param("~target_port", 5000))
         self.image_topic = rospy.get_param("~image_topic", "/camera/color/image_raw")
         self.jpeg_quality = int(rospy.get_param("~jpeg_quality", 80))
@@ -56,12 +64,13 @@ class UdpImageSender(object):
         payload = encoded.tobytes()
         total_chunks = int(math.ceil(len(payload) / float(self.max_payload)))
         stamp_ns = image_msg.header.stamp.to_nsec()
+        send_ts_ns = _time_ns()
 
         for chunk_index in range(total_chunks):
             start_index = chunk_index * self.max_payload
             end_index = start_index + self.max_payload
             chunk = payload[start_index:end_index]
-            header = struct.pack(HEADER_FORMAT, HEADER_MAGIC, stamp_ns, chunk_index, total_chunks)
+            header = struct.pack(HEADER_FORMAT, HEADER_MAGIC, stamp_ns, send_ts_ns, chunk_index, total_chunks)
             packet = header + chunk
             try:
                 self.socket.sendto(packet, (self.target_ip, self.target_port))

@@ -1,4 +1,3 @@
-
 import time
 import os
 import cv2
@@ -7,10 +6,12 @@ import random
 import numpy as np
 from dnndk import n2cube
 
-CLASSES_PATH = "./model_data/voc_classes.txt"
-ANCHORS_PATH = "./model_data/yolo_anchors.txt"
+OBJECT_TYPE = 'mix'
+CLASSES_PATH = './model_data/classes_' + OBJECT_TYPE + '.txt'
+ANCHORS_PATH = './model_data/yolo_anchors_' + OBJECT_TYPE + '.txt'
 SCORE_THRESH = 0.6
 NMS_THRESH = 0.3
+INPUT_SIZE = (416, 416)
 
 '''resize image with unchanged aspect ratio using padding'''
 def letterbox_image(image, size):
@@ -18,7 +19,7 @@ def letterbox_image(image, size):
     w, h = size
     scale = min(w/iw, h/ih)
     #print("image scale:",scale)
-    
+
     nw = int(iw*scale)
     nh = int(ih*scale)
 
@@ -36,7 +37,7 @@ def letterbox_image(image, size):
 def pre_process(image, model_image_size):
     image = image[...,::-1]
     image_h, image_w, _ = image.shape
- 
+
     if model_image_size != (None, None):
         assert model_image_size[0]%32 == 0, 'Multiples of 32 required'
         assert model_image_size[1]%32 == 0, 'Multiples of 32 required'
@@ -46,10 +47,10 @@ def pre_process(image, model_image_size):
         boxed_image = letterbox_image(image, new_image_size)
     image_data = np.array(boxed_image, dtype='float32')
     image_data /= 255.
-    image_data = np.expand_dims(image_data, 0) 	
+    image_data = np.expand_dims(image_data, 0)
     return image_data
 
-'''Get model classification information'''	
+'''Get model classification information'''
 def get_class(classes_path):
     with open(classes_path) as f:
         class_names = f.readlines()
@@ -81,7 +82,7 @@ def output_fix(feats, num_classes):
     # print('single layer score output:{}\n'.format(single_layer_box_confidence.shape))
 
     return feats_fixed
-    
+
 def _get_feats(feats, anchors, num_classes, input_shape):
     num_anchors = len(anchors)
     anchors_tensor = np.reshape(np.array(anchors, dtype=np.float32), [1, 1, 1, num_anchors, 2])
@@ -127,7 +128,7 @@ def boxes_and_scores(feats, anchors, classes_num, input_shape, image_shape):
     boxes = np.reshape(boxes, [-1, 4])
     box_scores = box_confidence * box_class_probs
     box_scores = np.reshape(box_scores, [-1, classes_num])
-    return boxes, box_scores	
+    return boxes, box_scores
 
 '''Draw detection frame'''
 def draw_bbox(image, bboxes, classes):
@@ -174,7 +175,7 @@ def nms_boxes(boxes, scores):
     areas = (x2-x1+1)*(y2-y1+1)
     # sort the scores from minimun to maximun and invert order =>  ' maximun -> minimun '
     # output sub-number
-    order = scores.argsort()[::-1] 
+    order = scores.argsort()[::-1]
 
     keep = []
     while order.size > 0:
@@ -195,15 +196,15 @@ def nms_boxes(boxes, scores):
         inds = np.where(ovr <= NMS_THRESH)[0]
         order = order[inds + 1]
 
-    return keep	
-  
+    return keep
+
 '''Model post-processing'''
 def eval(yolo_outputs, image_shape, class_names, anchors):
 
     anchor_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]]
     boxes = []
     box_scores = []
-    
+
     input_shape = np.shape(yolo_outputs[0])[1 : 3]
     input_shape = np.array(input_shape)*32
 
@@ -216,7 +217,7 @@ def eval(yolo_outputs, image_shape, class_names, anchors):
         box_scores.append(_box_scores)
     boxes = np.concatenate(boxes, axis = 0)
     box_scores = np.concatenate(box_scores, axis = 0)
-    
+
     mask = box_scores >= SCORE_THRESH
     boxes_ = []
     scores_ = []
@@ -225,7 +226,7 @@ def eval(yolo_outputs, image_shape, class_names, anchors):
         class_boxes_np = boxes[mask[:, c]]
         class_box_scores_np = box_scores[:, c]
         class_box_scores_np = class_box_scores_np[mask[:, c]]
-        nms_index_np = nms_boxes(class_boxes_np, class_box_scores_np) 
+        nms_index_np = nms_boxes(class_boxes_np, class_box_scores_np)
         class_boxes_np = class_boxes_np[nms_index_np]
         class_box_scores_np = class_box_scores_np[nms_index_np]
         classes_np = np.ones_like(class_box_scores_np, dtype = np.int32) * c
@@ -235,11 +236,11 @@ def eval(yolo_outputs, image_shape, class_names, anchors):
     boxes_ = np.concatenate(boxes_, axis = 0)
     scores_ = np.concatenate(scores_, axis = 0)
     classes_ = np.concatenate(classes_, axis = 0)
-    
+
     return boxes_, scores_, classes_
 
 """DPU Kernel Name for tf_yolov3_vehicle"""
-KERNEL_CONV="tf_yolov3_vehicle"
+KERNEL_CONV='tf_yolov3_'+ OBJECT_TYPE
 
 """DPU IN/OUT Name for tf_yolov3_vehicle"""
 CONV_INPUT_NODE="conv2d_1_convolution"
@@ -248,8 +249,8 @@ CONV_OUTPUT_NODE2="conv2d_67_convolution"
 CONV_OUTPUT_NODE3="conv2d_75_convolution"
 
 if __name__ == "__main__":
-       
-   
+
+
     """ Attach to DPU driver and prepare for running """
     n2cube.dpuOpen()
 
@@ -258,13 +259,15 @@ if __name__ == "__main__":
 
     """ Create DPU Tasks for tf_yolov3_vehicle """
     task = n2cube.dpuCreateTask(kernel, 0) # 1 = T_MODE_PROF; 0 = normal;
-    # task = n2cube.dpuEnableTaskProfile(task)    
+    # task = n2cube.dpuEnableTaskProfile(task)
 
     cap=cv2.VideoCapture(0)
 
     cap.set(3,640)
     cap.set(4,480)
 
+    class_names = get_class(CLASSES_PATH)
+    dim = 3 * (len(class_names) + 5)
     while True:
 
         total_time_start = time.process_time() # <------------- Start total Running Time Recording (1)
@@ -274,12 +277,12 @@ if __name__ == "__main__":
         """Load image to DPU"""
         #image_path = "./image/input.jpg"
         #print("Loading picture from image folder...")
-        #image = cv2.imread(image_path)	
+        #image = cv2.imread(image_path)
         preprocess_time = time.process_time() # <------------------------------------- Start preprocess time------------------------------------
         image_ho, image_wo, _ = image.shape
         image_size = image.shape[:2]
         image_data = pre_process(image, (416, 416))
- 
+
         image_data = np.array(image_data,dtype=np.float32)
         input_len = n2cube.dpuGetInputTensorSize(task, CONV_INPUT_NODE)
 
@@ -292,33 +295,33 @@ if __name__ == "__main__":
 
         """Model run on DPU"""
         n2cube.dpuRunTask(task)
-   
+
         conv_sbbox_size = n2cube.dpuGetOutputTensorSize(task, CONV_OUTPUT_NODE1)
         conv_out1 = n2cube.dpuGetOutputTensorInHWCFP32(task, CONV_OUTPUT_NODE1, conv_sbbox_size)
-        conv_out1 = np.reshape(conv_out1, (1, 13, 13, 54))
-    
+        conv_out1 = np.reshape(conv_out1, (1, 13, 13, dim))
+
         conv_mbbox_size = n2cube.dpuGetOutputTensorSize(task, CONV_OUTPUT_NODE2)
         conv_out2 = n2cube.dpuGetOutputTensorInHWCFP32(task, CONV_OUTPUT_NODE2, conv_mbbox_size)
-        conv_out2 = np.reshape(conv_out2, (1, 26, 26, 54))
-        
+        conv_out2 = np.reshape(conv_out2, (1, 26, 26, dim))
+
         conv_lbbox_size = n2cube.dpuGetOutputTensorSize(task, CONV_OUTPUT_NODE3)
         conv_out3 = n2cube.dpuGetOutputTensorInHWCFP32(task, CONV_OUTPUT_NODE3, conv_lbbox_size)
-        conv_out3 = np.reshape(conv_out3, (1, 52, 52, 54))
-    
-        conv_time = time.process_time()-conv_time_start # <------------ Stop Convolution Time Recording (2)
-        #print('Convolution Speed: %s FPS'%(1/(time.process_time()-conv_time_start))) 
+        conv_out3 = np.reshape(conv_out3, (1, 52, 52, dim))
 
-        yolo_outputs = [conv_out1, conv_out2, conv_out3]    
-          
+        conv_time = time.process_time()-conv_time_start # <------------ Stop Convolution Time Recording (2)
+        #print('Convolution Speed: %s FPS'%(1/(time.process_time()-conv_time_start)))
+
+        yolo_outputs = [conv_out1, conv_out2, conv_out3]
+
         """Get model classification information"""
         class_names = get_class(CLASSES_PATH)
-    
+
         """Get model anchor value"""
         anchors = get_anchors(ANCHORS_PATH)
-    
-        """Post-processing"""   
+
+        """Post-processing"""
         out_boxes, out_scores, out_classes = eval(yolo_outputs, image_size, class_names, anchors)
-    
+
 
 
         items = []
@@ -344,7 +347,7 @@ if __name__ == "__main__":
 
         """ Running time calculate(over) and result print """
         run_time = time.process_time() - total_time_start # <------------- Stop total Running Time Recording (1)
-        
+
         texted_image = cv2.putText(texted_image, 'Convolution Time' + ': '+ str(round(1/conv_time,2)) + 'FPS (' + str(round(conv_time*1000,2)) +' ms)', (0,20), cv2.FONT_ITALIC, 0.6, (122, 0, 204), 2)
         texted_image = cv2.putText(texted_image, 'Pre-processing time' + ': '+ str(round(preprocess_time * 1000,2)) + 'ms', (0,40), cv2.FONT_ITALIC, 0.6, (122, 0, 204), 2)
         texted_image = cv2.putText(texted_image, 'Post-processing time' + ': '+ str(round((run_time-preprocess_time-conv_time) * 1000,2)) + 'ms', (0,60), cv2.FONT_ITALIC, 0.6, (122, 0, 204), 2)

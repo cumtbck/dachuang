@@ -2,8 +2,10 @@
 import json
 import socket
 import threading
+import time
 from collections import deque
 
+import cv2
 import numpy as np
 import rospy
 import tf2_ros
@@ -13,6 +15,13 @@ from geometry_msgs.msg import PointStamped
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from sensor_msgs import point_cloud2
 from std_msgs.msg import Bool, Header
+
+
+def _time_ns():
+    try:
+        return time.time_ns()
+    except AttributeError:
+        return int(time.time() * 1.0e9)
 
 
 class DepthBuffer(object):
@@ -46,8 +55,21 @@ class SemanticSolver(object):
         self.helmet_classes = set(rospy.get_param("~helmet_classes", ["helmet"]))
         self.red_light_classes = set(rospy.get_param("~red_light_classes", ["red_light"]))
         self.green_light_classes = set(rospy.get_param("~green_light_classes", ["green_light"]))
+        self.enable_result_view = bool(rospy.get_param("~enable_result_view", False))
+        self.result_view_topic = rospy.get_param("~result_view_topic", "/camera/color/image_raw")
+        self.result_view_window = rospy.get_param("~result_view_window", "mix_detections")
+        self.result_view_fps = max(float(rospy.get_param("~result_view_fps", 10.0)), 0.1)
+        self.result_view_buffer_size = int(rospy.get_param("~result_view_buffer_size", self.buffer_size))
+        self.result_view_match_tolerance_ms = max(
+            float(rospy.get_param("~result_view_match_tolerance_ms", 80.0)),
+            0.0,
+        )
+        self.debug_latency = bool(rospy.get_param("~debug_latency", False))
+        self.latency_mode = str(rospy.get_param("~latency_mode", "both")).lower()
+        self.latency_log_interval = max(float(rospy.get_param("~latency_log_interval", 1.0)), 0.0)
 
         self.depth_buffer = DepthBuffer(self.buffer_size)
+        self.rgb_buffer = DepthBuffer(self.result_view_buffer_size)
         self.camera_matrix = None
         self.camera_frame = None
 
@@ -60,9 +82,17 @@ class SemanticSolver(object):
 
         rospy.Subscriber(self.depth_topic, Image, self.depth_callback, queue_size=5)
         rospy.Subscriber(self.camera_info_topic, CameraInfo, self.camera_info_callback, queue_size=1)
+        if self.enable_result_view:
+            rospy.Subscriber(self.result_view_topic, Image, self.rgb_callback, queue_size=1, buff_size=2 ** 24)
 
         self._traffic_state = False
         self._safety_state = False
+        self._last_latency_log_time = 0.0
+        self._last_result_view_time = 0.0
+        self._result_window_ready = False
+
+        if self.enable_result_view:
+            rospy.on_shutdown(self._shutdown_result_view)
 
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("", self.listen_port))
@@ -84,6 +114,14 @@ class SemanticSolver(object):
             return
         self.depth_buffer.push(depth_msg.header.stamp.to_nsec(), depth_image, depth_msg.header.frame_id)
 
+    def rgb_callback(self, rgb_msg):
+        try:
+            rgb_image = self.bridge.imgmsg_to_cv2(rgb_msg, desired_encoding="bgr8")
+        except Exception as exc:
+            rospy.logwarn("semantic_solver: rgb conversion failed: %s", exc)
+            return
+        self.rgb_buffer.push(rgb_msg.header.stamp.to_nsec(), rgb_image, rgb_msg.header.frame_id)
+
     def _receive_loop(self):
         while not rospy.is_shutdown():
             try:
@@ -101,15 +139,172 @@ class SemanticSolver(object):
                 continue
 
             stamp_ns = int(message.get("stamp_ns", 0))
+            self._maybe_log_latency_debug(message, stamp_ns)
             detections = message.get("detections", [])
             if not detections:
                 self._publish_empty_cloud(stamp_ns)
                 if self._safety_state:
                     self._safety_state = False
                     self.safety_pub.publish(Bool(data=False))
+                self._maybe_show_result_image(stamp_ns, detections)
                 continue
 
             self._handle_detections(stamp_ns, detections)
+            self._maybe_show_result_image(stamp_ns, detections)
+
+    def _maybe_log_latency_debug(self, message, stamp_ns):
+        if not self.debug_latency:
+            return
+
+        send_ts_ns = int(message.get("send_ts_ns", 0))
+        if send_ts_ns <= 0:
+            return
+
+        now_sec = time.time()
+        if now_sec - self._last_latency_log_time < self.latency_log_interval:
+            return
+        self._last_latency_log_time = now_sec
+
+        parts = []
+        recv_ns = _time_ns()
+
+        if self.latency_mode in ("rtt", "both"):
+            rtt_ms = (recv_ns - send_ts_ns) / 1.0e6
+            parts.append("RTT %.2f ms" % rtt_ms)
+
+        if self.latency_mode in ("one-way", "both"):
+            server_recv_ns = int(message.get("server_recv_ns", 0))
+            server_send_ns = int(message.get("server_send_ns", 0))
+            if server_recv_ns > 0:
+                one_way_ms = (server_recv_ns - send_ts_ns) / 1.0e6
+                parts.append("one-way %.2f ms" % one_way_ms)
+            if server_recv_ns > 0 and server_send_ns > 0:
+                server_ms = (server_send_ns - server_recv_ns) / 1.0e6
+                parts.append("zynq %.2f ms" % server_ms)
+
+        frame_age_ms = message.get("frame_age_ms")
+        if frame_age_ms is not None:
+            parts.append("frame-age %.2f ms" % float(frame_age_ms))
+
+        detector_stats = message.get("detector_stats", [])
+        if detector_stats:
+            summary = []
+            for detector_stat in detector_stats:
+                summary.append(
+                    "%s:%s pre=%.1f dpu=%.1f post=%.1f"
+                    % (
+                        detector_stat.get("profile", "unknown"),
+                        detector_stat.get("count", 0),
+                        float(detector_stat.get("pre_ms", 0.0)),
+                        float(detector_stat.get("dpu_ms", 0.0)),
+                        float(detector_stat.get("post_ms", 0.0)),
+                    )
+                )
+            parts.append("stages " + " | ".join(summary))
+
+        if parts:
+            rospy.loginfo("semantic_solver latency (stamp_ns=%s): %s" % (stamp_ns, "; ".join(parts)))
+
+    def _maybe_show_result_image(self, stamp_ns, detections):
+        if not self.enable_result_view:
+            return
+
+        now_sec = time.time()
+        min_interval_sec = 1.0 / self.result_view_fps
+        if self._last_result_view_time and now_sec - self._last_result_view_time < min_interval_sec:
+            return
+
+        rgb_entry = self.rgb_buffer.closest(stamp_ns)
+        if rgb_entry is None:
+            rospy.logwarn_throttle(5.0, "semantic_solver: no RGB frame available for result view")
+            return
+
+        rgb_stamp_ns, rgb_image, _frame_id = rgb_entry
+        if self.result_view_match_tolerance_ms > 0.0:
+            mismatch_ms = abs(rgb_stamp_ns - stamp_ns) / 1.0e6
+            if mismatch_ms > self.result_view_match_tolerance_ms:
+                rospy.logwarn_throttle(
+                    5.0,
+                    "semantic_solver: RGB frame mismatch %.2f ms exceeds tolerance" % mismatch_ms,
+                )
+                return
+
+        overlay = self._draw_detections(rgb_image, detections)
+        try:
+            if not self._result_window_ready:
+                cv2.namedWindow(self.result_view_window, cv2.WINDOW_NORMAL)
+                self._result_window_ready = True
+            cv2.imshow(self.result_view_window, overlay)
+            cv2.waitKey(1)
+            self._last_result_view_time = now_sec
+        except cv2.error as exc:
+            rospy.logwarn("semantic_solver: result view failed: %s", exc)
+            self.enable_result_view = False
+
+    def _draw_detections(self, image, detections):
+        overlay = image.copy()
+        image_height, image_width = overlay.shape[:2]
+
+        for detection in detections:
+            bbox = detection.get("bbox")
+            class_name = detection.get("class", "object")
+            if not bbox or len(bbox) < 4:
+                continue
+
+            x_min, y_min, x_max, y_max = [int(value) for value in bbox[:4]]
+            x_min = max(0, min(x_min, image_width - 1))
+            x_max = max(0, min(x_max, image_width - 1))
+            y_min = max(0, min(y_min, image_height - 1))
+            y_max = max(0, min(y_max, image_height - 1))
+            if x_max <= x_min or y_max <= y_min:
+                continue
+
+            color = self._color_for_label(class_name)
+            cv2.rectangle(overlay, (x_min, y_min), (x_max, y_max), color, 2)
+
+            label = class_name
+            score = detection.get("score")
+            if score is not None:
+                label = "%s:%.2f" % (class_name, float(score))
+
+            text_size, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            text_width = text_size[0] + 6
+            text_height = text_size[1] + baseline + 4
+            text_top = max(0, y_min - text_height)
+            cv2.rectangle(overlay, (x_min, text_top), (x_min + text_width, text_top + text_height), color, -1)
+            cv2.putText(
+                overlay,
+                label,
+                (x_min + 3, text_top + text_size[1] + 1),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
+
+        return overlay
+
+    @staticmethod
+    def _color_for_label(label):
+        palette = [
+            (71, 99, 255),
+            (255, 191, 0),
+            (50, 205, 50),
+            (0, 215, 255),
+            (180, 105, 255),
+            (230, 216, 173),
+        ]
+        index = sum(ord(char) for char in str(label)) % len(palette)
+        return palette[index]
+
+    def _shutdown_result_view(self):
+        if not self._result_window_ready:
+            return
+        try:
+            cv2.destroyWindow(self.result_view_window)
+        except cv2.error:
+            pass
 
     def _handle_detections(self, stamp_ns, detections):
         depth_entry = self.depth_buffer.closest(stamp_ns)

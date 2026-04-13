@@ -11,7 +11,7 @@ Jetson-side ROS package for sending RGB frames to Zynq, receiving detection resu
 ## Launch
 
 ```bash
-roslaunch semantic_vision_bridge semantic_bridge.launch zynq_ip:=192.168.1.10 zynq_port:=5000 listen_port:=5001
+roslaunch semantic_vision_bridge semantic_bridge.launch zynq_ip:=10.42.0.64 zynq_port:=5000 listen_port:=5001
 ```
 
 Adjust parameters in `config/rgb_sender.yaml`, `config/semantic_solver.yaml`, and `config/traffic_manager.yaml` for topics and thresholds.
