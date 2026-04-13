@@ -2,20 +2,25 @@ cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
 # ==============================================================================
-# 放弃损坏的系统路径，强制统一到 /usr/local 下的 OpenCV 3.4.5
+# 强制隔离损坏的系统路径，完全使用本地 3.4.5 版本
 # ==============================================================================
-# 指向你之前 find 出来的 3.4.5 配置文件路径
+
+# 1. 指定本地 OpenCV 3.4.5 的配置路径
 set(OpenCV_DIR "/usr/local/share/OpenCV")
 
-# 强制搜索并指定路径
-find_package(OpenCV 3.4.5 EXACT REQUIRED)
+# 2. 强制寻找该版本，禁止搜寻默认路径
+find_package(OpenCV 3.4.5 EXACT REQUIRED NO_DEFAULT_PATH)
 
-# 确保头文件包含顺序：/usr/local 优先
+# 3. 强制头文件包含顺序（关键：将本地路径置于系统路径之前）
 include_directories(BEFORE SYSTEM ${OpenCV_INCLUDE_DIRS})
 
-message(STATUS "SWITCHED TO LOCAL OPENCV:")
-message(STATUS "    Version: ${OpenCV_VERSION}")
-message(STATUS "    Libraries: ${OpenCV_LIBRARIES}")
+# 4. 打印调试信息，确保选对路径
+message(STATUS "---------------------------------------------------")
+message(STATUS "  CHECKING OPENCV FOR ORBBEC:")
+message(STATUS "  Version: ${OpenCV_VERSION}")
+message(STATUS "  Include Dirs: ${OpenCV_INCLUDE_DIRS}")
+message(STATUS "  Libraries: ${OpenCV_LIBRARIES}")
+message(STATUS "---------------------------------------------------")
 # ==============================================================================
 
 # Compiler settings
