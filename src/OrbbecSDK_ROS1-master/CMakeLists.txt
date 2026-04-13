@@ -2,31 +2,21 @@ cmake_minimum_required(VERSION 3.0.2)
 project(orbbec_camera)
 
 # ==============================================================================
-# 绕过系统损坏的配置，强制链接物理路径下的 OpenCV 3.2.0
+# 放弃损坏的系统路径，强制统一到 /usr/local 下的 OpenCV 3.4.5
 # ==============================================================================
-set(OpenCV_FOUND TRUE)
-set(OpenCV_VERSION "3.2.0")
+# 指向你之前 find 出来的 3.4.5 配置文件路径
+set(OpenCV_DIR "/usr/local/share/OpenCV")
 
-# 强制指定头文件位置（防止去 /usr/local/include 乱找）
-include_directories(BEFORE SYSTEM "/usr/include" "/usr/include/opencv")
-set(OpenCV_INCLUDE_DIRS "/usr/include" "/usr/include/opencv")
+# 强制搜索并指定路径
+find_package(OpenCV 3.4.5 EXACT REQUIRED)
 
-# 直接指定物理 .so 文件路径，彻底解决 ABI 冲突
-set(OpenCV_LIBRARIES
-    "/usr/lib/aarch64-linux-gnu/libopencv_core.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_imgcodecs.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_videoio.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_highgui.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_objdetect.so.3.2"
-    "/usr/lib/aarch64-linux-gnu/libopencv_calib3d.so.3.2"
-)
+# 确保头文件包含顺序：/usr/local 优先
+include_directories(BEFORE SYSTEM ${OpenCV_INCLUDE_DIRS})
 
-# 告诉 CMake 已经手动解决 OpenCV 依赖
-message(STATUS "MANUAL HACK: Using hardcoded OpenCV 3.2.0 paths for Jetson.")
-
-# 重要：确保注释掉原有的 find_package(OpenCV REQUIRED)
-# find_package(OpenCV REQUIRED)
+message(STATUS "SWITCHED TO LOCAL OPENCV:")
+message(STATUS "    Version: ${OpenCV_VERSION}")
+message(STATUS "    Libraries: ${OpenCV_LIBRARIES}")
+# ==============================================================================
 
 # Compiler settings
 set(CMAKE_CXX_STANDARD 11)
