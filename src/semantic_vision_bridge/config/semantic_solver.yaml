@@ -1,4 +1,5 @@
-depth_topic: /camera/depth_to_color/image_raw
+# Hardware-aligned depth from the camera node when depth_registration=true.
+depth_topic: /camera/depth/image_raw
 camera_info_topic: /camera/color/camera_info
 listen_port: 5001
 target_frame: base_link

@@ -7,7 +7,6 @@ import socket
 import struct
 import sys
 import time
-from typing import Any
 
 import cv2
 import numpy as np
@@ -17,7 +16,7 @@ try:
 except ImportError:  # pragma: no cover - only on Zynq
     _n2cube = None
 
-n2cube: Any = _n2cube
+n2cube = _n2cube
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -31,7 +30,7 @@ DEFAULT_LISTEN_PORT = 5000
 DEFAULT_SEND_HOST = "10.42.0.1"
 DEFAULT_SEND_PORT = 5001
 DEFAULT_MAX_AGE = 0.5
-DEFAULT_PROFILES = "mix,mix_tiny"
+DEFAULT_PROFILE = "mix"
 DEFAULT_DEBUG_PRINT_INTERVAL = 1.0
 DEFAULT_LATENCY_OFFSET_MS = 0.2
 DEFAULT_LATENCY_MIN_SAMPLE_MS = 0.1
@@ -84,14 +83,15 @@ def ns_to_ms(delta_ns):
     return float(delta_ns) / 1.0e6
 
 
-def parse_profiles(value):
-    profiles = [profile.strip() for profile in value.split(",") if profile.strip()]
-    if not profiles:
-        profiles = ["mix", "mix_tiny"]
-    unknown_profiles = [profile for profile in profiles if profile not in PROFILE_CONFIGS]
-    if unknown_profiles:
-        raise ValueError("Unsupported profile(s): {}".format(", ".join(unknown_profiles)))
-    return profiles
+def resolve_profile(value):
+    profile_name = value.strip()
+    if not profile_name:
+        raise ValueError("A profile name is required; choose mix or mix_tiny")
+    if "," in profile_name:
+        raise ValueError("Only one profile can be loaded per process; choose mix or mix_tiny")
+    if profile_name not in PROFILE_CONFIGS:
+        raise ValueError("Unsupported profile: {}".format(profile_name))
+    return profile_name
 
 
 def load_module(module_name):
@@ -234,8 +234,22 @@ class DetectorRunner(object):
         if nms_thresh is not None and hasattr(self.module, "NMS_THRESH"):
             self.module.NMS_THRESH = float(nms_thresh)
 
+        print(
+            "[INFO] Loading DPU kernel for profile {}: {}".format(
+                self.profile_name,
+                self.kernel_name,
+            )
+        )
         self.kernel = n2cube.dpuLoadKernel(self.kernel_name)
-        self.task = n2cube.dpuCreateTask(self.kernel, 0)
+        try:
+            self.task = n2cube.dpuCreateTask(self.kernel, 0)
+        except Exception:
+            try:
+                n2cube.dpuDestroyKernel(self.kernel)
+            except Exception:
+                pass
+            raise
+        print("[INFO] Profile {} is ready".format(self.profile_name))
 
     def _pre_process(self, image):
         if hasattr(self.module, "pre_process"):
@@ -314,11 +328,17 @@ class DetectorRunner(object):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Zynq mix RGB inference server")
+    parser = argparse.ArgumentParser(description="Zynq RGB inference server")
     parser.add_argument("--listen-port", type=int, default=DEFAULT_LISTEN_PORT)
     parser.add_argument("--send-host", default=DEFAULT_SEND_HOST)
     parser.add_argument("--send-port", type=int, default=DEFAULT_SEND_PORT)
-    parser.add_argument("--profiles", default=DEFAULT_PROFILES, help="Comma-separated profiles: mix,mix_tiny")
+    parser.add_argument(
+        "--profile",
+        "--profiles",
+        dest="profile",
+        default=DEFAULT_PROFILE,
+        help="Single profile to run: mix or mix_tiny",
+    )
     parser.add_argument("--score-thresh", type=float, default=None)
     parser.add_argument("--nms-thresh", type=float, default=None)
     parser.add_argument("--max-age", type=float, default=DEFAULT_MAX_AGE)
@@ -335,15 +355,23 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_detectors(profiles, args):
+def build_detectors(profile_name, args):
     detectors = []
     if n2cube is None:
         print("[WARN] dnndk not found; running in passthrough mode")
         return detectors
 
-    n2cube.dpuOpen()
-    for profile_name in profiles:
-        config = PROFILE_CONFIGS[profile_name]
+    config = PROFILE_CONFIGS[profile_name]
+    print(
+        "[INFO] Selected profile {} (module={}, kernel={})".format(
+            profile_name,
+            config["module_name"],
+            config["kernel_name"],
+        )
+    )
+
+    try:
+        n2cube.dpuOpen()
         module = load_module(config["module_name"])
         detectors.append(
             DetectorRunner(
@@ -354,6 +382,13 @@ def build_detectors(profiles, args):
                 nms_thresh=args.nms_thresh,
             )
         )
+    except Exception:
+        try:
+            n2cube.dpuClose()
+        except Exception:
+            pass
+        raise
+
     return detectors
 
 
@@ -394,7 +429,7 @@ def format_detector_summary(detector_stats):
     return " | ".join(parts)
 
 
-def maybe_print_debug_dashboard(args, profiles_label, frame_meta, response, detector_stats, latency_tracker, last_print_ns):
+def maybe_print_debug_dashboard(args, profile_label, frame_meta, response, detector_stats, latency_tracker, last_print_ns):
     if not args.debug_latency:
         return last_print_ns
 
@@ -403,8 +438,8 @@ def maybe_print_debug_dashboard(args, profiles_label, frame_meta, response, dete
     if last_print_ns and now_ns - last_print_ns < interval_ns:
         return last_print_ns
 
-    lines = ["=== Zynq Mix Debug ==="]
-    lines.append("profiles : {}".format(profiles_label))
+    lines = ["=== Zynq Inference Debug ==="]
+    lines.append("profile  : {}".format(profile_label))
     lines.append("count    : {}".format(response.get("count", 0)))
     lines.append("frame age: {:.2f} ms".format(response.get("frame_age_ms", 0.0)))
     if args.latency_mode in ("one-way", "both") and response.get("one_way_latency_ms") is not None:
@@ -427,9 +462,9 @@ def maybe_print_debug_dashboard(args, profiles_label, frame_meta, response, dete
 
 def main():
     args = parse_args()
-    profiles = parse_profiles(args.profiles)
-    profiles_label = ",".join(profiles)
-    detectors = build_detectors(profiles, args)
+    profile_name = resolve_profile(args.profile)
+    profile_label = profile_name
+    detectors = build_detectors(profile_name, args)
     assembler = FrameAssembler(max_age_sec=args.max_age)
     latency_tracker = LatencyTracker(
         min_sample_ms=args.latency_min_sample_ms,
@@ -508,7 +543,8 @@ def main():
                 response["frame_age_ms"] = round(ns_to_ms(frame_meta["frame_age_ns"]), 3)
                 response["decode_ms"] = round(decode_ms, 3)
                 response["detector_stats"] = detector_stats
-                response["profiles"] = profiles
+                response["profile"] = profile_name
+                response["profiles"] = [profile_name]
                 response["latency_mode"] = args.latency_mode
                 if frame_meta["send_ts_ns"]:
                     raw_latency_ms = ns_to_ms(frame_meta["server_recv_ns"] - frame_meta["send_ts_ns"])
@@ -522,7 +558,7 @@ def main():
 
             last_debug_print_ns = maybe_print_debug_dashboard(
                 args,
-                profiles_label,
+                profile_label,
                 frame_meta,
                 response,
                 detector_stats,

@@ -2,6 +2,7 @@
   <arg name="zynq_ip" default="10.42.0.64" />
   <arg name="zynq_port" default="5000" />
   <arg name="listen_port" default="5001" />
+  <arg name="depth_topic" default="/camera/depth/image_raw" />
 
   <node pkg="semantic_vision_bridge" type="rgb_sender.py" name="rgb_sender" output="screen">
     <rosparam file="$(find semantic_vision_bridge)/config/rgb_sender.yaml" command="load" />
@@ -12,6 +13,7 @@
   <node pkg="semantic_vision_bridge" type="semantic_solver.py" name="semantic_solver" output="screen">
     <rosparam file="$(find semantic_vision_bridge)/config/semantic_solver.yaml" command="load" />
     <param name="listen_port" value="$(arg listen_port)" />
+    <param name="depth_topic" value="$(arg depth_topic)" />
   </node>
 
   <node pkg="semantic_vision_bridge" type="traffic_manager.py" name="traffic_manager" output="screen">

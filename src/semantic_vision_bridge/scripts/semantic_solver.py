@@ -24,6 +24,15 @@ def _time_ns():
         return int(time.time() * 1.0e9)
 
 
+def _time_from_ns(stamp_ns, use_now_if_zero=False):
+    stamp_ns = int(stamp_ns or 0)
+    if stamp_ns <= 0:
+        return rospy.Time.now() if use_now_if_zero else rospy.Time(0, 0)
+    secs = stamp_ns // 1000000000
+    nsecs = stamp_ns % 1000000000
+    return rospy.Time(secs, nsecs)
+
+
 class DepthBuffer(object):
     def __init__(self, max_length):
         self._buffer = deque(maxlen=max_length)
@@ -97,6 +106,11 @@ class SemanticSolver(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind(("", self.listen_port))
         self.socket.settimeout(0.2)
+
+        rospy.loginfo(
+            "semantic_solver: depth_topic=%s camera_info_topic=%s result_view_topic=%s"
+            % (self.depth_topic, self.camera_info_topic, self.result_view_topic)
+        )
 
         self.receiver_thread = threading.Thread(target=self._receive_loop)
         self.receiver_thread.daemon = True
@@ -407,7 +421,7 @@ class SemanticSolver(object):
 
     def _transform_point(self, point_camera, source_frame, stamp_ns):
         point_msg = PointStamped()
-        point_msg.header.stamp = rospy.Time.from_nsec(stamp_ns)
+        point_msg.header.stamp = _time_from_ns(stamp_ns)
         point_msg.header.frame_id = source_frame or self.camera_frame
         point_msg.point.x = point_camera[0]
         point_msg.point.y = point_camera[1]
@@ -438,13 +452,13 @@ class SemanticSolver(object):
 
     def _create_cloud(self, points, stamp_ns):
         header = Header()
-        header.stamp = rospy.Time.from_nsec(stamp_ns)
+        header.stamp = _time_from_ns(stamp_ns)
         header.frame_id = self.target_frame
         return point_cloud2.create_cloud_xyz32(header, points)
 
     def _publish_empty_cloud(self, stamp_ns):
         header = Header()
-        header.stamp = rospy.Time.from_nsec(stamp_ns) if stamp_ns else rospy.Time.now()
+        header.stamp = _time_from_ns(stamp_ns, use_now_if_zero=True)
         header.frame_id = self.target_frame
         empty_cloud = point_cloud2.create_cloud_xyz32(header, [])
         self.semantic_pub.publish(empty_cloud)
