@@ -82,7 +82,21 @@ void OBCameraNode::setupDevices() {
     }
   }
   if (enable_d2c_viewer_) {
-    d2c_viewer_ = std::make_shared<D2CViewer>(nh_, nh_private_);
+    d2c_viewer_ = std::make_shared<D2CViewer>(
+        nh_, nh_private_, [this]() {
+          if (depth_registration_ && pipeline_started_ && pipeline_ != nullptr) {
+            try {
+              return boost::optional<OBCameraParam>(pipeline_->getCameraParam());
+            } catch (const ob::Error& e) {
+              ROS_WARN_STREAM_THROTTLE(
+                  5.0, "Failed to get pipeline camera params: " << e.getMessage());
+            } catch (const std::exception& e) {
+              ROS_WARN_STREAM_THROTTLE(5.0,
+                                       "Failed to get pipeline camera params: " << e.what());
+            }
+          }
+          return getCameraParam();
+        });
   }
   CHECK_NOTNULL(device_info_.get());
   if (enable_pipeline_) {
