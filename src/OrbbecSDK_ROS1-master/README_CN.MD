@@ -348,7 +348,7 @@ roslaunch orbbec_camera multi_camera.launch
 - `connection_delay`: 重新打开设备的延迟时间，单位为毫秒。某些设备，例如 Astra mini，需要更长的时间来初始化，立即重新打开设备可能会在热插拔时导致固件崩溃。
 - `enable_point_cloud`: 启用点云。
 - `enable_colored_point_cloud`: 启用彩色点云。
-- `enable_d2c_viewer`: 发布 D2C 叠加图像（仅用于测试）。
+- `enable_d2c_viewer`: 发布对齐到彩色坐标系的深度图像到 `depth_to_color/image_raw`。
 - `device_num`: 设备数量。如果需要多个相机，则必须填写此项。
 - `color_width`, `color_height`, `color_fps`: 彩色数据流的分辨率和帧率。
 - `ir_width`, `ir_height`, `ir_fps`: 红外数据流的分辨率和帧率。

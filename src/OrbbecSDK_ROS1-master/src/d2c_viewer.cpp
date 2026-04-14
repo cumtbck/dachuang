@@ -40,20 +40,10 @@ void D2CViewer::messageCallback(const sensor_msgs::ImageConstPtr& rgb_msg,
               rgb_msg->height, depth_msg->width, depth_msg->height);
     return;
   }
-  auto rgb_img_ptr = cv_bridge::toCvCopy(rgb_msg, sensor_msgs::image_encodings::RGB8);
   auto depth_img_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1);
-  cv::Mat gray_depth, depth_img, d2c_img;
-  depth_img_ptr->image.convertTo(gray_depth, CV_8UC1);
-  cv::cvtColor(gray_depth, depth_img, cv::COLOR_GRAY2RGB);
-  if (CV_MAJOR_VERSION >= 4) {
-    depth_img.setTo(cv::Scalar(255, 255, 0), depth_img);
-  }
-  cv::bitwise_or(rgb_img_ptr->image, depth_img, d2c_img);
-  sensor_msgs::ImagePtr d2c_msg =
-      cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::RGB8, d2c_img)
-          .toImageMsg();
-  d2c_msg->header = rgb_msg->header;
-  d2c_viewer_pub_.publish(d2c_msg);
+  sensor_msgs::ImagePtr depth_to_color_msg = depth_img_ptr->toImageMsg();
+  depth_to_color_msg->header = rgb_msg->header;
+  d2c_viewer_pub_.publish(depth_to_color_msg);
 }
 
 }  // namespace orbbec_camera

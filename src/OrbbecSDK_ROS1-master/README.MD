@@ -354,7 +354,7 @@ The following are the launch parameters available:
   reopening the device immediately can cause firmware crashes when hot plugging.
 - `enable_point_cloud`: Enables the point cloud.
 - `enable_colored_point_cloud`: Enables the RGB point cloud.
-- `enable_d2c_viewer`: Publishes the D2C overlay image (for testing only).
+- `enable_d2c_viewer`: Publishes the depth-to-color aligned depth image on `depth_to_color/image_raw`.
 - `device_num`: The number of devices. This must be filled in if multiple cameras are required.
 - `color_width`, `color_height`, `color_fps`: The resolution and frame rate of the color stream.
 - `ir_width`, `ir_height`, `ir_fps`: The resolution and frame rate of the IR stream.
