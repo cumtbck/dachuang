@@ -30,6 +30,7 @@ D2CViewer::D2CViewer(ros::NodeHandle& nh, ros::NodeHandle& nh_private)
                                                                         depth_sub_);
   sync_->registerCallback(boost::bind(&D2CViewer::messageCallback, this, _1, _2));
   d2c_viewer_pub_ = nh_.advertise<sensor_msgs::Image>("depth_to_color/image_raw", 1);
+  d2c_overlay_pub_ = nh_.advertise<sensor_msgs::Image>("depth_to_color_overlay/image_raw", 1);
 }
 D2CViewer::~D2CViewer() = default;
 
@@ -41,9 +42,32 @@ void D2CViewer::messageCallback(const sensor_msgs::ImageConstPtr& rgb_msg,
     return;
   }
   auto depth_img_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1);
-  sensor_msgs::ImagePtr depth_to_color_msg = depth_img_ptr->toImageMsg();
-  depth_to_color_msg->header = rgb_msg->header;
+  auto depth_to_color_msg =
+      cv_bridge::CvImage(rgb_msg->header, sensor_msgs::image_encodings::TYPE_16UC1,
+                         depth_img_ptr->image)
+          .toImageMsg();
   d2c_viewer_pub_.publish(depth_to_color_msg);
+
+  auto rgb_img_ptr = cv_bridge::toCvCopy(rgb_msg, sensor_msgs::image_encodings::RGB8);
+  cv::Mat valid_mask = depth_img_ptr->image > 0;
+  if (cv::countNonZero(valid_mask) == 0) {
+    return;
+  }
+
+  cv::Mat depth_normalized;
+  cv::normalize(depth_img_ptr->image, depth_normalized, 0, 255, cv::NORM_MINMAX, CV_8UC1,
+                valid_mask);
+  cv::Mat depth_color_bgr;
+  cv::applyColorMap(depth_normalized, depth_color_bgr, cv::COLORMAP_JET);
+  cv::Mat depth_color_rgb;
+  cv::cvtColor(depth_color_bgr, depth_color_rgb, cv::COLOR_BGR2RGB);
+
+  cv::Mat overlay;
+  cv::addWeighted(rgb_img_ptr->image, 0.65, depth_color_rgb, 0.35, 0.0, overlay);
+  auto overlay_msg = cv_bridge::CvImage(rgb_msg->header, sensor_msgs::image_encodings::RGB8,
+                                        overlay)
+                         .toImageMsg();
+  d2c_overlay_pub_.publish(overlay_msg);
 }
 
 }  // namespace orbbec_camera

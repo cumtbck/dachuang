@@ -255,6 +255,7 @@ to `true` in the stream that corresponds to the argument of the launch file.
 - `/camera/depth/points` : The point cloud, only available when  `enable_point_cloud` is `true`.
 - `/camera/depth_registered/points`: The colored point cloud, only available when  `enable_colored_point_cloud`
   is `true`.
+- `/camera/depth_to_color_overlay/image_raw`: Human-view RGB overlay of the aligned depth stream.
 - `/camera/ir/camera_info`:  The IR camera info.
 - `/camera/ir/image_raw`: The IR stream image
 - `/camera/accel/sample`: Acceleration data stream `enable_sync_output_accel_gyro`turned off，`enable_accel`turned on
@@ -354,7 +355,7 @@ The following are the launch parameters available:
   reopening the device immediately can cause firmware crashes when hot plugging.
 - `enable_point_cloud`: Enables the point cloud.
 - `enable_colored_point_cloud`: Enables the RGB point cloud.
-- `enable_d2c_viewer`: Publishes the depth-to-color aligned depth image on `depth_to_color/image_raw`.
+- `enable_d2c_viewer`: Publishes the depth-to-color aligned depth image on `depth_to_color/image_raw` and the human-view overlay on `depth_to_color_overlay/image_raw`.
 - `device_num`: The number of devices. This must be filled in if multiple cameras are required.
 - `color_width`, `color_height`, `color_fps`: The resolution and frame rate of the color stream.
 - `ir_width`, `ir_height`, `ir_fps`: The resolution and frame rate of the IR stream.

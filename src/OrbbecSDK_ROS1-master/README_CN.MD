@@ -250,6 +250,7 @@ rosservice call /camera/save_point_cloud "{}"
 - `/camera/depth/image_raw`: 红外数据流图像话题。
 - `/camera/depth/points` : 点云话题，仅当 `enable_point_cloud` 为 `true` 时才可用`.
 - `/camera/depth_registered/points`: 彩色点云话题，仅当 `enable_colored_point_cloud` 为 `true` 时才可用。
+- `/camera/depth_to_color_overlay/image_raw`: 对齐深度的人眼可视化 RGB 叠加图。
 - `/camera/ir/camera_info`:  红外相机信息（CameraInfo）话题。
 - `/camera/ir/image_raw`: 红外数据流图像话题。
 - `/camera/accel/sample`: 加速度数据流，`enable_sync_output_accel_gyro`配置关闭，`enable_accel`配置打开
@@ -348,7 +349,7 @@ roslaunch orbbec_camera multi_camera.launch
 - `connection_delay`: 重新打开设备的延迟时间，单位为毫秒。某些设备，例如 Astra mini，需要更长的时间来初始化，立即重新打开设备可能会在热插拔时导致固件崩溃。
 - `enable_point_cloud`: 启用点云。
 - `enable_colored_point_cloud`: 启用彩色点云。
-- `enable_d2c_viewer`: 发布对齐到彩色坐标系的深度图像到 `depth_to_color/image_raw`。
+- `enable_d2c_viewer`: 发布对齐到彩色坐标系的深度图像到 `depth_to_color/image_raw`，以及人眼可视化叠加图到 `depth_to_color_overlay/image_raw`。
 - `device_num`: 设备数量。如果需要多个相机，则必须填写此项。
 - `color_width`, `color_height`, `color_fps`: 彩色数据流的分辨率和帧率。
 - `ir_width`, `ir_height`, `ir_fps`: 红外数据流的分辨率和帧率。
