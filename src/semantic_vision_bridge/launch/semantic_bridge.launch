@@ -3,6 +3,11 @@
   <arg name="zynq_port" default="5000" />
   <arg name="listen_port" default="5001" />
   <arg name="depth_topic" default="/camera/depth/image_raw" />
+  <arg name="enable_result_view" default="false" />
+  <arg name="result_view_allow_latest_frame_fallback" default="true" />
+  <arg name="debug_detections" default="false" />
+  <arg name="debug_detection_log_interval" default="1.0" />
+  <arg name="debug_detection_topk" default="3" />
 
   <node pkg="semantic_vision_bridge" type="rgb_sender.py" name="rgb_sender" output="screen">
     <rosparam file="$(find semantic_vision_bridge)/config/rgb_sender.yaml" command="load" />
@@ -14,6 +19,11 @@
     <rosparam file="$(find semantic_vision_bridge)/config/semantic_solver.yaml" command="load" />
     <param name="listen_port" value="$(arg listen_port)" />
     <param name="depth_topic" value="$(arg depth_topic)" />
+    <param name="enable_result_view" value="$(arg enable_result_view)" />
+    <param name="result_view_allow_latest_frame_fallback" value="$(arg result_view_allow_latest_frame_fallback)" />
+    <param name="debug_detections" value="$(arg debug_detections)" />
+    <param name="debug_detection_log_interval" value="$(arg debug_detection_log_interval)" />
+    <param name="debug_detection_topk" value="$(arg debug_detection_topk)" />
   </node>
 
   <node pkg="semantic_vision_bridge" type="traffic_manager.py" name="traffic_manager" output="screen">

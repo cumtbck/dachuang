@@ -8,6 +8,11 @@
   <arg name="depth_topic" default="/camera/depth/image_raw" />
   <arg name="enable_ir" default="false" />
   <arg name="enable_soft_filter" default="false" />
+  <arg name="enable_result_view" default="false" />
+  <arg name="result_view_allow_latest_frame_fallback" default="true" />
+  <arg name="debug_detections" default="false" />
+  <arg name="debug_detection_log_interval" default="1.0" />
+  <arg name="debug_detection_topk" default="3" />
 
   <!-- Base & navigation stack -->
   <include file="$(find turn_on_wheeltec_robot)/launch/turn_on_wheeltec_robot.launch">
@@ -44,5 +49,10 @@
     <arg name="zynq_port" value="$(arg zynq_port)" />
     <arg name="listen_port" value="$(arg listen_port)" />
     <arg name="depth_topic" value="$(arg depth_topic)" />
+    <arg name="enable_result_view" value="$(arg enable_result_view)" />
+    <arg name="result_view_allow_latest_frame_fallback" value="$(arg result_view_allow_latest_frame_fallback)" />
+    <arg name="debug_detections" value="$(arg debug_detections)" />
+    <arg name="debug_detection_log_interval" value="$(arg debug_detection_log_interval)" />
+    <arg name="debug_detection_topk" value="$(arg debug_detection_topk)" />
   </include>
 </launch>

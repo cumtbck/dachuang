@@ -4,12 +4,16 @@ camera_info_topic: /camera/color/camera_info
 listen_port: 5001
 target_frame: base_link
 buffer_size: 10
-enable_result_view: false
+enable_result_view: true
 result_view_topic: /camera/color/image_raw
 result_view_window: mix_detections
 result_view_fps: 10.0
 result_view_buffer_size: 10
 result_view_match_tolerance_ms: 80.0
+result_view_allow_latest_frame_fallback: true
+debug_detections: true
+debug_detection_log_interval: 1.0
+debug_detection_topk: 3
 debug_latency: false
 latency_mode: both
 latency_log_interval: 1.0

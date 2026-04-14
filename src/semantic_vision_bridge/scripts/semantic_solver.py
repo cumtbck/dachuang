@@ -73,6 +73,12 @@ class SemanticSolver(object):
             float(rospy.get_param("~result_view_match_tolerance_ms", 80.0)),
             0.0,
         )
+        self.result_view_allow_latest_frame_fallback = bool(
+            rospy.get_param("~result_view_allow_latest_frame_fallback", True)
+        )
+        self.debug_detections = bool(rospy.get_param("~debug_detections", False))
+        self.debug_detection_log_interval = max(float(rospy.get_param("~debug_detection_log_interval", 1.0)), 0.0)
+        self.debug_detection_topk = max(int(rospy.get_param("~debug_detection_topk", 3)), 1)
         self.debug_latency = bool(rospy.get_param("~debug_latency", False))
         self.latency_mode = str(rospy.get_param("~latency_mode", "both")).lower()
         self.latency_log_interval = max(float(rospy.get_param("~latency_log_interval", 1.0)), 0.0)
@@ -97,6 +103,7 @@ class SemanticSolver(object):
         self._traffic_state = False
         self._safety_state = False
         self._last_latency_log_time = 0.0
+        self._last_detection_log_time = 0.0
         self._last_result_view_time = 0.0
         self._result_window_ready = False
 
@@ -108,8 +115,14 @@ class SemanticSolver(object):
         self.socket.settimeout(0.2)
 
         rospy.loginfo(
-            "semantic_solver: depth_topic=%s camera_info_topic=%s result_view_topic=%s"
-            % (self.depth_topic, self.camera_info_topic, self.result_view_topic)
+            "semantic_solver: depth_topic=%s camera_info_topic=%s result_view_topic=%s result_view_fallback=%s debug_detections=%s"
+            % (
+                self.depth_topic,
+                self.camera_info_topic,
+                self.result_view_topic,
+                self.result_view_allow_latest_frame_fallback,
+                self.debug_detections,
+            )
         )
 
         self.receiver_thread = threading.Thread(target=self._receive_loop)
@@ -155,6 +168,7 @@ class SemanticSolver(object):
             stamp_ns = int(message.get("stamp_ns", 0))
             self._maybe_log_latency_debug(message, stamp_ns)
             detections = message.get("detections", [])
+            self._maybe_log_detection_trace(stamp_ns, detections, message)
             if not detections:
                 self._publish_empty_cloud(stamp_ns)
                 if self._safety_state:
@@ -219,6 +233,80 @@ class SemanticSolver(object):
         if parts:
             rospy.loginfo("semantic_solver latency (stamp_ns=%s): %s" % (stamp_ns, "; ".join(parts)))
 
+    def _maybe_log_detection_trace(self, stamp_ns, detections, message):
+        if not self.debug_detections:
+            return
+
+        now_sec = time.time()
+        if now_sec - self._last_detection_log_time < self.debug_detection_log_interval:
+            return
+        self._last_detection_log_time = now_sec
+
+        preview_source = message.get("detection_preview") or detections
+        count = message.get("count", len(detections))
+        preview_text = self._format_detection_preview(preview_source, self.debug_detection_topk)
+        rospy.loginfo(
+            "semantic_solver detections (stamp_ns=%s count=%s preview=%s)"
+            % (stamp_ns, count, preview_text)
+        )
+
+    @staticmethod
+    def _format_detection_preview(detections, limit=3):
+        if not detections:
+            return "none"
+
+        def _score_key(detection):
+            try:
+                return float(detection.get("score", 0.0))
+            except (TypeError, ValueError, AttributeError):
+                return 0.0
+
+        limit = max(int(limit), 1)
+        preview = sorted(detections, key=_score_key, reverse=True)
+        parts = []
+        for detection in preview[:limit]:
+            class_name = detection.get("class", "object")
+            score = _score_key(detection)
+            bbox = detection.get("bbox") or []
+            if len(bbox) >= 4:
+                bbox_text = "[%d,%d,%d,%d]" % (
+                    int(round(float(bbox[0]))),
+                    int(round(float(bbox[1]))),
+                    int(round(float(bbox[2]))),
+                    int(round(float(bbox[3]))),
+                )
+            else:
+                bbox_text = "[]"
+            parts.append("%s:%.2f%s" % (class_name, score, bbox_text))
+
+        if len(preview) > limit:
+            parts.append("+%d more" % (len(preview) - limit))
+        return " | ".join(parts)
+
+    @staticmethod
+    def _draw_status_banner(image, lines):
+        if not lines:
+            return
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.5
+        thickness = 1
+        padding = 6
+        line_height = 18
+        max_width = 0
+        for line in lines:
+            text_size, _baseline = cv2.getTextSize(line, font, scale, thickness)
+            max_width = max(max_width, text_size[0])
+
+        banner_width = max_width + padding * 2
+        banner_height = line_height * len(lines) + padding * 2
+        cv2.rectangle(image, (4, 4), (4 + banner_width, 4 + banner_height), (0, 0, 0), -1)
+
+        text_y = 4 + padding + 12
+        for line in lines:
+            cv2.putText(image, line, (4 + padding, text_y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+            text_y += line_height
+
     def _maybe_show_result_image(self, stamp_ns, detections):
         if not self.enable_result_view:
             return
@@ -234,16 +322,45 @@ class SemanticSolver(object):
             return
 
         rgb_stamp_ns, rgb_image, _frame_id = rgb_entry
+        mismatch_ms = abs(rgb_stamp_ns - stamp_ns) / 1.0e6
         if self.result_view_match_tolerance_ms > 0.0:
-            mismatch_ms = abs(rgb_stamp_ns - stamp_ns) / 1.0e6
             if mismatch_ms > self.result_view_match_tolerance_ms:
+                if not self.result_view_allow_latest_frame_fallback:
+                    rospy.logwarn_throttle(
+                        5.0,
+                        "semantic_solver: RGB frame mismatch %.2f ms exceeds tolerance %.2f ms",
+                        mismatch_ms,
+                        self.result_view_match_tolerance_ms,
+                    )
+                    return
                 rospy.logwarn_throttle(
                     5.0,
-                    "semantic_solver: RGB frame mismatch %.2f ms exceeds tolerance" % mismatch_ms,
+                    "semantic_solver: RGB frame mismatch %.2f ms exceeds tolerance %.2f ms; showing nearest frame",
+                    mismatch_ms,
+                    self.result_view_match_tolerance_ms,
                 )
-                return
 
-        overlay = self._draw_detections(rgb_image, detections)
+        overlay, drawn_count, skipped_count = self._draw_detections(rgb_image, detections)
+        status_lines = []
+        if self.result_view_match_tolerance_ms > 0.0 and mismatch_ms > self.result_view_match_tolerance_ms:
+            status_lines.append("rgb mismatch=%.1fms" % mismatch_ms)
+        if detections:
+            if drawn_count == 0:
+                status_lines.append("boxes=%d drawn=0 skipped=%d" % (len(detections), skipped_count))
+                rospy.logwarn_throttle(
+                    5.0,
+                    "semantic_solver: result view received %d detections but drew none; preview=%s",
+                    len(detections),
+                    self._format_detection_preview(detections, self.debug_detection_topk),
+                )
+            elif self.debug_detections:
+                status_lines.append("boxes=%d drawn=%d skipped=%d" % (len(detections), drawn_count, skipped_count))
+        if self.debug_detections:
+            status_lines.append("preview=%s" % self._format_detection_preview(detections, self.debug_detection_topk))
+
+        if status_lines:
+            self._draw_status_banner(overlay, status_lines[:3])
+
         try:
             if not self._result_window_ready:
                 cv2.namedWindow(self.result_view_window, cv2.WINDOW_NORMAL)
@@ -258,11 +375,14 @@ class SemanticSolver(object):
     def _draw_detections(self, image, detections):
         overlay = image.copy()
         image_height, image_width = overlay.shape[:2]
+        drawn_count = 0
+        skipped_count = 0
 
         for detection in detections:
             bbox = detection.get("bbox")
             class_name = detection.get("class", "object")
             if not bbox or len(bbox) < 4:
+                skipped_count += 1
                 continue
 
             x_min, y_min, x_max, y_max = [int(value) for value in bbox[:4]]
@@ -271,6 +391,7 @@ class SemanticSolver(object):
             y_min = max(0, min(y_min, image_height - 1))
             y_max = max(0, min(y_max, image_height - 1))
             if x_max <= x_min or y_max <= y_min:
+                skipped_count += 1
                 continue
 
             color = self._color_for_label(class_name)
@@ -296,8 +417,9 @@ class SemanticSolver(object):
                 1,
                 cv2.LINE_AA,
             )
+            drawn_count += 1
 
-        return overlay
+        return overlay, drawn_count, skipped_count
 
     @staticmethod
     def _color_for_label(label):

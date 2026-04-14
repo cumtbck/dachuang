@@ -34,6 +34,7 @@ DEFAULT_PROFILE = "mix"
 DEFAULT_DEBUG_PRINT_INTERVAL = 1.0
 DEFAULT_LATENCY_OFFSET_MS = 0.2
 DEFAULT_LATENCY_MIN_SAMPLE_MS = 0.1
+DEFAULT_DEBUG_BBOX_TOPK = 3
 
 PROFILE_CONFIGS = {
     "mix": {
@@ -343,6 +344,8 @@ def parse_args():
     parser.add_argument("--nms-thresh", type=float, default=None)
     parser.add_argument("--max-age", type=float, default=DEFAULT_MAX_AGE)
     parser.add_argument("--debug-latency", action="store_true", help="Enable latency reporting and debug fields")
+    parser.add_argument("--debug-bboxes", action="store_true", help="Print raw bbox previews and include them in the UDP response")
+    parser.add_argument("--debug-bbox-topk", type=int, default=DEFAULT_DEBUG_BBOX_TOPK)
     parser.add_argument(
         "--latency-mode",
         choices=("one-way", "rtt", "both"),
@@ -429,8 +432,41 @@ def format_detector_summary(detector_stats):
     return " | ".join(parts)
 
 
+def format_detection_preview(detections, top_k=DEFAULT_DEBUG_BBOX_TOPK):
+    if not detections:
+        return "none"
+
+    def score_key(detection):
+        try:
+            return float(detection.get("score", 0.0))
+        except (TypeError, ValueError, AttributeError):
+            return 0.0
+
+    limit = max(int(top_k), 1)
+    preview = sorted(detections, key=score_key, reverse=True)
+    parts = []
+    for detection in preview[:limit]:
+        class_name = detection.get("class", "object")
+        score = score_key(detection)
+        bbox = detection.get("bbox") or []
+        if len(bbox) >= 4:
+            bbox_text = "[%d,%d,%d,%d]" % (
+                int(round(float(bbox[0]))),
+                int(round(float(bbox[1]))),
+                int(round(float(bbox[2]))),
+                int(round(float(bbox[3]))),
+            )
+        else:
+            bbox_text = "[]"
+        parts.append("%s:%.2f%s" % (class_name, score, bbox_text))
+
+    if len(preview) > limit:
+        parts.append("+%d more" % (len(preview) - limit))
+    return " | ".join(parts)
+
+
 def maybe_print_debug_dashboard(args, profile_label, frame_meta, response, detector_stats, latency_tracker, last_print_ns):
-    if not args.debug_latency:
+    if not args.debug_latency and not args.debug_bboxes:
         return last_print_ns
 
     now_ns = _time_ns()
@@ -453,6 +489,9 @@ def maybe_print_debug_dashboard(args, profile_label, frame_meta, response, detec
     if args.latency_mode in ("rtt", "both"):
         lines.append("send ts  : {}".format(response.get("send_ts_ns", 0)))
     lines.append("stages   : {}".format(format_detector_summary(detector_stats)))
+    if args.debug_bboxes:
+        preview_source = response.get("detection_preview") or response.get("detections", [])
+        lines.append("boxes    : {}".format(format_detection_preview(preview_source, args.debug_bbox_topk)))
     if latency_tracker.min_latency_ms is not None:
         lines.append("sync fix : {:.4f} ms".format(latency_tracker.min_latency_ms))
 
@@ -535,6 +574,19 @@ def main():
                 "post_ms": round(total_post_ms, 3),
                 "total_ms": round(total_pre_ms + total_dpu_ms + total_post_ms, 3),
             }
+
+            if args.debug_bboxes:
+                def score_key(detection):
+                    try:
+                        return float(detection.get("score", 0.0))
+                    except (TypeError, ValueError, AttributeError):
+                        return 0.0
+
+                response["detection_preview"] = sorted(
+                    detections,
+                    key=score_key,
+                    reverse=True,
+                )[: max(int(args.debug_bbox_topk), 1)]
 
             if args.debug_latency:
                 server_send_ns = _time_ns()
