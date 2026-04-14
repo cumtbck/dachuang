@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import errno
 import importlib
 import json
 import os
@@ -7,6 +8,7 @@ import socket
 import struct
 import sys
 import time
+import zlib
 
 import cv2
 import numpy as np
@@ -35,6 +37,7 @@ DEFAULT_DEBUG_PRINT_INTERVAL = 1.0
 DEFAULT_LATENCY_OFFSET_MS = 0.2
 DEFAULT_LATENCY_MIN_SAMPLE_MS = 0.1
 DEFAULT_DEBUG_BBOX_TOPK = 3
+DEFAULT_UDP_RAW_PAYLOAD_LIMIT = 1200
 
 PROFILE_CONFIGS = {
     "mix": {
@@ -465,6 +468,18 @@ def format_detection_preview(detections, top_k=DEFAULT_DEBUG_BBOX_TOPK):
     return " | ".join(parts)
 
 
+def encode_response_payload(response, raw_limit=DEFAULT_UDP_RAW_PAYLOAD_LIMIT):
+    message = json.dumps(response, separators=(",", ":")).encode("utf-8")
+    if len(message) <= raw_limit:
+        return message, "json"
+
+    compressed = zlib.compress(message, 6)
+    if len(compressed) < len(message):
+        return b"ZC" + compressed, "zlib"
+
+    return message, "json"
+
+
 def maybe_print_debug_dashboard(args, profile_label, frame_meta, response, detector_stats, latency_tracker, last_print_ns):
     if not args.debug_latency and not args.debug_bboxes:
         return last_print_ns
@@ -605,8 +620,38 @@ def main():
                     response["calibrated_latency_ms"] = round(latency_tracker.calibrated(raw_latency_ms), 3)
                     response["latency_fix_ms"] = round(latency_tracker.min_latency_ms or 0.0, 3)
 
-            message = json.dumps(response, separators=(",", ":"))
-            send_socket.sendto(message.encode("utf-8"), (args.send_host, args.send_port))
+            payload, transport = encode_response_payload(response)
+            try:
+                send_socket.sendto(payload, (args.send_host, args.send_port))
+            except OSError as exc:
+                if exc.errno != errno.EMSGSIZE:
+                    raise
+
+                compact_response = dict(response)
+                compact_response["transport"] = transport
+                if "detections" in compact_response:
+                    compact_response["detections"] = compact_response["detections"][: max(int(args.debug_bbox_topk), 1)]
+                if "detection_preview" not in compact_response and compact_response.get("detections"):
+                    compact_response["detection_preview"] = compact_response["detections"]
+
+                compact_payload, _ = encode_response_payload(compact_response, raw_limit=max(256, DEFAULT_UDP_RAW_PAYLOAD_LIMIT // 2))
+                try:
+                    send_socket.sendto(compact_payload, (args.send_host, args.send_port))
+                except OSError as compact_exc:
+                    if compact_exc.errno != errno.EMSGSIZE:
+                        raise
+
+                    minimal_response = {
+                        "stamp_ns": response.get("stamp_ns", 0),
+                        "count": response.get("count", 0),
+                        "detections": compact_response.get("detection_preview", [])[:1],
+                        "pre_ms": response.get("pre_ms", 0.0),
+                        "dpu_ms": response.get("dpu_ms", 0.0),
+                        "post_ms": response.get("post_ms", 0.0),
+                        "total_ms": response.get("total_ms", 0.0),
+                    }
+                    minimal_payload, _ = encode_response_payload(minimal_response, raw_limit=256)
+                    send_socket.sendto(minimal_payload, (args.send_host, args.send_port))
 
             last_debug_print_ns = maybe_print_debug_dashboard(
                 args,

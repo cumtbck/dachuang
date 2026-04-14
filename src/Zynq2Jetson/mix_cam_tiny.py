@@ -18,7 +18,7 @@ CONV_OUTPUT_NODES = [
 ]
 
 INPUT_SIZE = (512, 512)  # 训练/量化输入尺寸
-MIN_SCORE_THRESH = 0.1    # 最小阈值，防止全部过滤
+SCORE_THRESH = 0.1
 NMS_THRESH = 0.3
 DEBUG = False
 
@@ -78,23 +78,42 @@ def nms_boxes(boxes, scores, nms_thresh):
 
 def _get_feats(feats, anchors, num_classes, input_shape):
     num_anchors = len(anchors)
-    anchors_tensor = anchors.reshape(1,1,1,num_anchors,2)
-    grid_h, grid_w = feats.shape[1:3]
+    anchors_tensor = np.reshape(np.array(anchors, dtype=np.float32), [1, 1, 1, num_anchors, 2])
+    grid_size = np.shape(feats)[1:3]
     nu = num_classes + 5
-    predictions = feats.reshape(-1, grid_h, grid_w, num_anchors, nu)
-    box_xy = 1/(1+np.exp(-predictions[..., :2]))
-    box_wh = np.exp(predictions[..., 2:4])
-    box_conf = 1/(1+np.exp(-predictions[..., 4:5]))
-    box_class_probs = 1/(1+np.exp(-predictions[..., 5:]))
+    predictions = np.reshape(feats, [-1, grid_size[0], grid_size[1], num_anchors, nu])
+    grid_y = np.tile(np.reshape(np.arange(grid_size[0]), [-1, 1, 1, 1]), [1, grid_size[1], 1, 1])
+    grid_x = np.tile(np.reshape(np.arange(grid_size[1]), [1, -1, 1, 1]), [grid_size[0], 1, 1, 1])
+    grid = np.concatenate([grid_x, grid_y], axis=-1)
+    grid = np.array(grid, dtype=np.float32)
+
+    box_xy = (1 / (1 + np.exp(-predictions[..., :2])) + grid) / np.array(grid_size[::-1], dtype=np.float32)
+    box_wh = np.exp(predictions[..., 2:4]) * anchors_tensor / np.array(input_shape[::-1], dtype=np.float32)
+    box_conf = 1 / (1 + np.exp(-predictions[..., 4:5]))
+    box_class_probs = 1 / (1 + np.exp(-predictions[..., 5:]))
     return box_xy, box_wh, box_conf, box_class_probs
 
 def correct_boxes(box_xy, box_wh, input_shape, image_shape):
-    box_mins = box_xy - box_wh/2
-    box_maxes = box_xy + box_wh/2
-    boxes = np.concatenate([box_mins[...,0:1], box_mins[...,1:2],
-                            box_maxes[...,0:1], box_maxes[...,1:2]], axis=-1)
-    scale = np.array([image_shape[1]/input_shape[1], image_shape[0]/input_shape[0]]*2)
-    return boxes*scale
+    box_yx = box_xy[..., ::-1]
+    box_hw = box_wh[..., ::-1]
+    input_shape = np.array(input_shape, dtype=np.float32)
+    image_shape = np.array(image_shape, dtype=np.float32)
+    new_shape = np.around(image_shape * np.min(input_shape / image_shape))
+    offset = (input_shape - new_shape) / 2. / input_shape
+    scale = input_shape / new_shape
+    box_yx = (box_yx - offset) * scale
+    box_hw *= scale
+
+    box_mins = box_yx - (box_hw / 2.)
+    box_maxes = box_yx + (box_hw / 2.)
+    boxes = np.concatenate([
+        box_mins[..., 0:1],
+        box_mins[..., 1:2],
+        box_maxes[..., 0:1],
+        box_maxes[..., 1:2]
+    ], axis=-1)
+    boxes *= np.concatenate([image_shape, image_shape], axis=-1)
+    return boxes
 
 def boxes_and_scores(feats, anchors, num_classes, input_shape, image_shape):
     box_xy, box_wh, box_conf, box_class_probs = _get_feats(feats, anchors, num_classes, input_shape)
@@ -106,22 +125,21 @@ def boxes_and_scores(feats, anchors, num_classes, input_shape, image_shape):
 def eval_yolo(yolo_outputs, image_shape, class_names, anchors):
     boxes_list, scores_list, classes_list = [], [], []
     num_classes = len(class_names)
-    max_conf = 0
+    input_shape = np.shape(yolo_outputs[0])[1:3]
+    input_shape = np.array(input_shape) * 32
+
     for i, feats in enumerate(yolo_outputs):
-        boxes, scores = boxes_and_scores(feats, anchors[i], num_classes, INPUT_SIZE, image_shape)
-        max_conf = max(max_conf, np.max(scores))
+        boxes, scores = boxes_and_scores(feats, anchors[i], num_classes, input_shape, image_shape)
         for c in range(num_classes):
-            # 使用动态阈值
-            dynamic_thresh = max(MIN_SCORE_THRESH, max_conf*0.5)
-            class_boxes = boxes[scores[:,c]>=dynamic_thresh]
-            class_scores = scores[:,c][scores[:,c]>=dynamic_thresh]
+            class_boxes = boxes[scores[:,c] >= SCORE_THRESH]
+            class_scores = scores[:,c][scores[:,c] >= SCORE_THRESH]
             if len(class_scores)==0: continue
             keep = nms_boxes(class_boxes, class_scores, NMS_THRESH)
             boxes_list.extend(class_boxes[keep])
             scores_list.extend(class_scores[keep])
             classes_list.extend([c]*len(keep))
     if DEBUG:
-        print(f"[DEBUG] Max confidence: {max_conf:.4f}, Dynamic SCORE_THRESH={max(MIN_SCORE_THRESH, max_conf*0.5):.4f}")
+        print(f"[DEBUG] SCORE_THRESH={SCORE_THRESH:.4f}")
         print(f"[DEBUG] Total objects detected: {len(boxes_list)}")
     return np.array([[x[0], x[1], x[2], x[3], s, c]
                      for x,s,c in zip(boxes_list,scores_list,classes_list)])

@@ -3,6 +3,7 @@ import json
 import socket
 import threading
 import time
+import zlib
 from collections import deque
 
 import cv2
@@ -160,9 +161,9 @@ class SemanticSolver(object):
                 continue
 
             try:
-                message = json.loads(payload.decode("utf-8"))
-            except ValueError:
-                rospy.logwarn("semantic_solver: invalid JSON payload")
+                message = self._decode_udp_payload(payload)
+            except (ValueError, UnicodeDecodeError, zlib.error) as exc:
+                rospy.logwarn("semantic_solver: invalid JSON payload: %s", exc)
                 continue
 
             stamp_ns = int(message.get("stamp_ns", 0))
@@ -232,6 +233,12 @@ class SemanticSolver(object):
 
         if parts:
             rospy.loginfo("semantic_solver latency (stamp_ns=%s): %s" % (stamp_ns, "; ".join(parts)))
+
+    @staticmethod
+    def _decode_udp_payload(payload):
+        if payload.startswith(b"ZC"):
+            payload = zlib.decompress(payload[2:])
+        return json.loads(payload.decode("utf-8"))
 
     def _maybe_log_detection_trace(self, stamp_ns, detections, message):
         if not self.debug_detections:
