@@ -13,6 +13,7 @@
   <arg name="debug_detections" default="false" />
   <arg name="debug_detection_log_interval" default="1.0" />
   <arg name="debug_detection_topk" default="3" />
+  <arg name="enable_status_markers" default="false" />
 
   <!-- Base & navigation stack -->
   <include file="$(find turn_on_wheeltec_robot)/launch/turn_on_wheeltec_robot.launch">
@@ -54,5 +55,6 @@
     <arg name="debug_detections" value="$(arg debug_detections)" />
     <arg name="debug_detection_log_interval" value="$(arg debug_detection_log_interval)" />
     <arg name="debug_detection_topk" value="$(arg debug_detection_topk)" />
+    <arg name="enable_status_markers" value="$(arg enable_status_markers)" />
   </include>
 </launch>

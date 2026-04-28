@@ -101,6 +101,15 @@ void publish_msg(ros::Publisher *pub, full_scan_data_st *scan_frame, ros::Time s
     }
   }
 
+  for (int i = 0; i < point_nums; i++)
+  {
+    if (std::isnan(scanMsg.ranges[i]))
+    {
+      scanMsg.ranges[i] = 0.0;
+      scanMsg.intensities[i] = 0.0;
+    }
+  }
+
   pub->publish(scanMsg);
 }
 
@@ -182,6 +191,15 @@ void publish_msg(rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr &pub,
       }
       scanMsg.intensities[index] = intensity;
       last_index = index;
+    }
+  }
+
+  for (int i = 0; i < point_nums; i++)
+  {
+    if (std::isnan(scanMsg.ranges[i]))
+    {
+      scanMsg.ranges[i] = 0.0;
+      scanMsg.intensities[i] = 0.0;
     }
   }
 

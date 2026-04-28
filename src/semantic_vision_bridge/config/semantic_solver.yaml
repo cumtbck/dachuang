@@ -18,9 +18,9 @@ debug_latency: false
 latency_mode: both
 latency_log_interval: 1.0
 depth_scale: 1000.0
-obstacle_radius: 0.2
+obstacle_radius: 0.1
 traffic_stop_distance: 2.0
-helmet_stop_distance: 1.0
+helmet_stop_distance: 2.0
 helmet_classes: [helmet]
 red_light_classes: [red_light, red, redlight]
 green_light_classes: [green_light, green, greenlight]

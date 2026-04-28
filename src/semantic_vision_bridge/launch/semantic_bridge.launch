@@ -8,6 +8,7 @@
   <arg name="debug_detections" default="false" />
   <arg name="debug_detection_log_interval" default="1.0" />
   <arg name="debug_detection_topk" default="3" />
+  <arg name="enable_status_markers" default="false" />
 
   <node pkg="semantic_vision_bridge" type="rgb_sender.py" name="rgb_sender" output="screen">
     <rosparam file="$(find semantic_vision_bridge)/config/rgb_sender.yaml" command="load" />
@@ -29,4 +30,8 @@
   <node pkg="semantic_vision_bridge" type="traffic_manager.py" name="traffic_manager" output="screen">
     <rosparam file="$(find semantic_vision_bridge)/config/traffic_manager.yaml" command="load" />
   </node>
+
+  <group if="$(arg enable_status_markers)">
+    <node pkg="semantic_vision_bridge" type="status_markers.py" name="semantic_status_markers" output="screen" />
+  </group>
 </launch>
